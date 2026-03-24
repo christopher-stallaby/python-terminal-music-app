@@ -392,11 +392,13 @@ class MusicApp(App):
  # Each action_* method maps to a BINDING defined above.
 
  def action_toggle_pause(self) -> None:
-  """Space - play or pause."""
+  """Space - play or pause, or restart queue if stopped."""
   if self.player.state.status == PlaybackStatus.STOPPED:
-   self.player.play()
-  else:
-   self.player.pause()
+   # only attempt to play if we have a queue loaded
+   if self.player.state.queue:
+     self.player.play()
+   return  
+  self.player.pause()
 
  def action_next_track(self) -> None:
   """n - next track"""

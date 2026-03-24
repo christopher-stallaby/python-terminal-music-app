@@ -69,6 +69,8 @@ class MusicPlayer:
         self._on_track_end_callbacks:       list[Callable] = []
         self._on_state_change_callbacks:    list[Callable] = []
 
+        self._transitioning = False
+
         # Start the background thread that watches for track endings
         self._monitor_thread = threading.Thread(
             target=self._monitor_playback,
@@ -84,7 +86,7 @@ class MusicPlayer:
         Load a list of tracks as the playback queue.
         Optionally start at a specific index.
         """
-        self.stop()
+        # self.stop()
         self.state.queue        = tracks
         self.state.queue_index  = start_index
 
@@ -143,8 +145,9 @@ class MusicPlayer:
 
         if next_index >= len(self.state.queue):
             # We're are the end of the queue - stop
-            self.stop()
-            return
+            # self.stop()
+            # return
+            next_index = 0
         
         self.state.queue_index = next_index
         self._play_track(self.state.queue[self.state.queue_index])
@@ -214,20 +217,23 @@ class MusicPlayer:
     # -- INTERNAL METHODS ----------------------------------
     def _play_track(self, track: Track) -> None:
         """Internal method - loads and plays a specific track."""
+        self._transitioning = True
         self._media_player.stop()
 
         # Create a new media object pointing to the file
         media = self._instance.media_new(str(track.file_path))
         self._media_player.set_media(media)
         self._media_player.audio_set_volume(self.state.volume)
+        self._media_player.play()
 
         # Pre-buffer briefly before playing to reduce initial hiccup
-        time.sleep(0.1)
-        self._media_player.play()
+        # time.sleep(0.1)
+        # self._media_player.play()
 
         self.state.current_track    = track
         self.state.status           = PlaybackStatus.PLAYING
         self.state.position         = 0.0
+        self._transitioning         = False
 
         self._notify_track_change()
         self._notify_state_change()
@@ -255,6 +261,9 @@ class MusicPlayer:
         """
         while True:
             time.sleep(0.5)
+
+            if self._transitioning:
+                continue
 
             if self.state.status != PlaybackStatus.PLAYING:
                 continue
