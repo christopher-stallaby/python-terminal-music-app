@@ -35,12 +35,12 @@ SUPPORTED_EXTENSIONS = {".m4a", ".mp3", ".flac", ".ogg", ".opus"}
 @dataclass
 class Track:
 	"""Represents a single audio file."""
-	title:		str
-	artist:		str
-	album:		str
+	title:			str
+	artist:			str
+	album:			str
 	track_number:	int
-	duration:	float # in seconds
-	file_path:	Path
+	duration:		float # in seconds
+	file_path:		Path
 
 	@property
 	def duration_str(self) -> str:

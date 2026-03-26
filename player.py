@@ -86,7 +86,7 @@ class MusicPlayer:
         Load a list of tracks as the playback queue.
         Optionally start at a specific index.
         """
-        # self.stop()
+        # self.stop() IF THIS LINE IS UNCOMMENTED, SELECTING NEW ALBUM WILL STOP PLAYBACK
         self.state.queue        = tracks
         self.state.queue_index  = start_index
 
@@ -144,9 +144,7 @@ class MusicPlayer:
         next_index = self.state.queue_index + 1
 
         if next_index >= len(self.state.queue):
-            # We're are the end of the queue - stop
-            # self.stop()
-            # return
+            # loop back to the first track in the album
             next_index = 0
         
         self.state.queue_index = next_index
@@ -160,17 +158,17 @@ class MusicPlayer:
         if not self.state.queue:
             return
         
-        if self.state.position > 3.0:
-            # Restart the current track
-            self.seek(0)
-            return
-        
         prev_index = self.state.queue_index -1
 
-        if prev_index < 0:
-            # Already at the first track - restart it
+        if (self.state.position > 3.0) or (prev_index < 0):
+            # Restart the current track if more than 3 seconds in or if it is the first track
             self.seek(0)
             return
+
+        # if prev_index < 0: COMMENTING OUT THIS LINE TO TEST COMBINING THIS WITH THE PREVIOUS CONDITION
+        #     # Already at the first track - restart it
+        #     self.seek(0)
+        #     return
     
         self.state.queue_index = prev_index
         self._play_track(self.state.queue[self.state.queue_index])
@@ -218,7 +216,6 @@ class MusicPlayer:
     def _play_track(self, track: Track) -> None:
         """Internal method - loads and plays a specific track."""
         self._transitioning = True
-        self._media_player.stop()
 
         # Create a new media object pointing to the file
         media = self._instance.media_new(str(track.file_path))
@@ -226,9 +223,6 @@ class MusicPlayer:
         self._media_player.audio_set_volume(self.state.volume)
         self._media_player.play()
 
-        # Pre-buffer briefly before playing to reduce initial hiccup
-        # time.sleep(0.1)
-        # self._media_player.play()
 
         self.state.current_track    = track
         self.state.status           = PlaybackStatus.PLAYING
@@ -297,7 +291,9 @@ class MusicPlayer:
     
 
 # -- ENTRY POINT -------------------------------------
-
+# This block only runs when you execute player.py directly
+# When player.py is imported by other modules, this block is skipped.
+# This pattern is fundamental Python - you'll use it constantly.
 if __name__ == "__main__":
     from library import scan_library
 
