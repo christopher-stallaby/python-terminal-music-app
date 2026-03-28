@@ -2,8 +2,6 @@
 __pycache__/
 *.py[cod]
 .env
-venv/
-.venv/
 
 # VLC/Python dependencies
 *.so

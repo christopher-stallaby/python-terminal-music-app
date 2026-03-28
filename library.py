@@ -23,7 +23,7 @@ from mutagen.id3 import ID3NoHeaderError
 # -- CONFIGURATION ----------------------------
 
 # The root folder where your music lives
-MUSIC_ROOT = Path.home() / "Music"
+MUSIC_ROOT = Path.home()/"Music"
 
 # File extensions we'll treat as playable audio
 SUPPORTED_EXTENSIONS = {".m4a", ".mp3", ".flac", ".ogg", ".opus"}
@@ -56,6 +56,7 @@ class Album:
 	artist:     str
 	path:       Path
 	tracks:     list[Track] = field(default_factory=list)
+	artwork:    bytes | None = field(default=None, repr=False)
 
 	@property
 	def track_count(self) -> int:

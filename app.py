@@ -12,9 +12,13 @@ from textual.widgets import Header, Footer, ListView, ListItem, Label, Static
 from textual.containers import Horizontal, Vertical, ScrollableContainer
 from textual.binding import Binding
 from textual.message import Message
+from textual.reactive import reactive
+import asyncio
+
 
 from library import scan_library, Library, Artist, Album, Track
 from player import MusicPlayer, PlaybackStatus
+from album_art import fetch_album_art, clear_album_art_cache
 
 # -- CUSTOM MESSAGES -----------------------------------------------------------
 # Textual uses a message-passing system for thread-safe communication.
@@ -56,6 +60,8 @@ class MusicApp(App):
         Binding("-", "volume_down", "Vol-"),
         Binding("q", "quit", "Quit"),
     ]
+
+    current_artwork = reactive(None)
 
     # TEXTUAL CSS -------------------------------------------------------------
     # Textual has its own CSS-like styling system
@@ -99,18 +105,26 @@ class MusicApp(App):
 
       /* -- NOW PLAYING -- */
       #now-playing {
-        height: auto;
+        height: 20;
         border: solid #f8dc5d;
         margin: 1 1 0 1;
         padding: 1 2;
         background: $panel;
         width: 100%;
       }
+      #now-playing-info {
+        height: 80%;
+        border: solid #f8dc5d;
+        margin: 1 1 0 1;
+        padding: 1 2;
+        background: $panel;
+        width: 50%;
+      }
 
       #now-playing-title {
         text-style: bold;
         # color: $accent;
-        color: #f8dc5d; # TESTING CSS COLOR CHANGE
+        color: #f8dc5d;
       }
 
       #now-playing-artist-album {
@@ -131,6 +145,19 @@ class MusicApp(App):
 
       #now-playing-volume {
         color: $text-muted;
+      }
+
+      /* -- ALBUM ART -- */
+      #album-art {
+        height: 80%;
+        width: 50%;
+        align: center middle;
+        text-align: center;
+        margin: 1 1 0 1;
+        padding: 1 2;
+        border: solid #f8dc5d;
+        background: $panel;
+        color: $text;
       }
 
       /* -- TRACKS PANEL -- */
@@ -173,9 +200,9 @@ class MusicApp(App):
 
             # -- LEFT SIDEBAR --
             with Vertical(id="sidebar"):
-                yield Label("	ARTISTS", id="sidebar-title-artists")
+                yield Label("ARTISTS", id="sidebar-title-artists")
                 yield ListView(id="artist-list")
-                yield Label("	ALBUMS", id="sidebar-title-albums")
+                yield Label("ALBUMS", id="sidebar-title-albums")
                 yield ListView(id="album-list")
 
             # -- RIGHT MAIN PANEL
@@ -183,14 +210,28 @@ class MusicApp(App):
 
                 # NOW PLAYING SECTION
                 with Vertical(id="now-playing"):
-                    yield Label("🎵 Nothing playing yet", id="now-playing-title")
-                    yield Label("", id="now-playing-artist-album")
-                    yield Label("", id="progress-bar")
-                    yield Label("", id="now-playing-time")
-                    yield Label(" 🎤 Volume: 80%", id="now-playing-volume")
+                    with Horizontal():
+                        with Vertical(id="now-playing-info"):
+                            yield Label(
+                                "🎵 Nothing playing yet", id="now-playing-title"
+                            )
+                            yield Label("", id="now-playing-artist-album")
+                            yield Label("", id="progress-bar")
+                            yield Label("", id="now-playing-time")
+                            yield Label(" 🎤 Volume: 80%", id="now-playing-volume")
+                        # ← ADD THIS: Album art display
+                        # yield Image(id="album-art", alt="Album Art")
+                        yield Static("🖼️", id="album-art")
+
+                # with Vertical(id="now-playing"):
+                #     yield Label("🎵 Nothing playing yet", id="now-playing-title")
+                #     yield Label("", id="now-playing-artist-album")
+                #     yield Label("", id="progress-bar")
+                #     yield Label("", id="now-playing-time")
+                #     yield Label(" 🎤 Volume: 80%", id="now-playing-volume")
 
                 # TRACKS SECTIONS
-                yield Label("	TRACKS", id="tracks-title")
+                yield Label("TRACKS", id="tracks-title")
                 yield ListView(id="track-list")
 
         yield Footer()
@@ -225,6 +266,9 @@ class MusicApp(App):
         self._selected_album: Album | None = None
         self._populating = False
 
+        # Track which albums we've already fetched artwork for
+        self._fetched_albums: set[tuple[str, str]] = set()
+
         # -- Register player callbacks --
         # These run from the player's background thread, so we use
         # call_from_thread() to safely post messages to the Textual event loop
@@ -237,7 +281,38 @@ class MusicApp(App):
         self._populate_artists()
 
         # -- Start the progress bar updater (every 500ms) --
-        self.set_interval(0.5, self._update_progress)
+        self.set_interval(0.5, self._update_progress)     
+
+    async def _fetch_and_display_artwork(self, artist: str, album: str) -> None:
+
+        """Fetch album art asynchronously and display it."""
+        # Check if we already have artwork for this album
+        if hasattr(self, '_fetched_albums'):
+            if (artist, album) in self._fetched_albums:
+                return  # Already fetched, skip
+            self._fetched_albums.add((artist, album))
+        else:
+            self._fetched_albums = {(artist, album)}
+
+        # Fetch in background thread to not block UI
+        artwork = await fetch_album_art(artist, album)
+
+        # Update status based on result
+        art_status = self.query_one("#album-art", Static)
+        if artwork:
+            art_status.update("✅ Artwork Cached")
+        else:
+            art_status.update("❌ No Artwork")
+
+        # if artwork:
+        #     # Update the Image widget
+        #     image_widget = self.query_one("#album-art", Image)
+        #     image_widget.load(artwork)
+    
+    # Add cleanup on quit
+    def on_unmount(self) -> None:
+        """Clean up when app closes."""
+        clear_album_art_cache()
 
     # -- POPULATE LISTS --------------------------------------
 
@@ -350,6 +425,23 @@ class MusicApp(App):
         self.query_one("#now-playing-artist-album", Label).update(
             f"    {track.artist} - {track.album}"
         )
+
+        art_status = self.query_one("#album-art", Static)
+        art_status.update("🖼️ Fetching...")
+
+        # Trigger artwork fetch (non-blocking)
+        asyncio.create_task(self._fetch_and_display_artwork(track.artist, track.album))
+
+        # # Trigger artwork fetch (non-blocking)
+        # asyncio.create_task(self._fetch_and_display_artwork(track.artist, track.album))
+
+        # # In _update_now_playing, add fallback handling
+        # try:
+        #     image_widget = self.query_one("#album-art", Image)
+        #     image_widget.load(artwork)
+        # except Exception:
+        #     # Fallback to text indicator if image not supported
+        #     self.query_one("#album-art", Static).update("🖼️ Artwork Loading...")
 
     def _update_progress(self) -> None:
         """
