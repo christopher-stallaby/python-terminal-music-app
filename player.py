@@ -40,6 +40,7 @@ class PlayerState:
     queue_index:    int             = 0
     volume:         int             = 80 # 0-100
     position:       float           = 0.0 # seconds into current track
+    shuffle:        bool            = False
 
 # -- MUSIC PLAYER ------------------------
 class MusicPlayer:
@@ -70,6 +71,7 @@ class MusicPlayer:
         self._on_state_change_callbacks:    list[Callable] = []
 
         self._transitioning = False
+        self._original_queue: list[Track] = []
 
         # Start the background thread that watches for track endings
         self._monitor_thread = threading.Thread(
@@ -194,6 +196,54 @@ class MusicPlayer:
         position = max(0.0, min(1.0, seconds / duration))
         self._media_player.set_position(position)
         self.state.position = seconds
+
+    def toggle_shuffle(self) -> None:
+        """
+        Toggle shuffle mode on or off.
+        
+        Shuffle ON: 
+            Saves the original queuer order, then randomizes the queue.
+            The currently playing track is moved to index 0 so that
+            next/previous navigation works correcly from the current position.
+        
+        Shuffle OFF:
+            Restores the original queue order.
+            Finds the current track in the restored queue so playback
+            continues from the correct position.
+        """
+        import random
+
+        self.state.shuffle = not self.state.shuffle
+
+        if self.state.shuffle:
+            # Save original order before shuffling
+            self._original_queue = self.state.queue.copy()
+
+            # Build shuffled queue with current track pinned at front
+            current = self.state.current_track
+            rest = [t for t in self.state.queue if t!= current]
+            random.shuffle(rest)
+
+            if current is not None:
+                self.state.queue = [current] + rest
+                self.state.queue_index = 0
+            else:
+                self.state.queue = rest
+        else:
+            # Restore original order
+            self.state.queue = self._original_queue.copy()
+            self._original_queue = []
+
+            # Re-find current track in restored queue
+            if self.state.current_track in self.state.queue:
+                self.state.queue_index = self.state.queue.index(
+                    self.state.current_track
+                )
+            else:
+                self.state.queue_index = 0
+
+        self._notify_state_change()
+
 
     # -- CALLBACK REGISTRATION ------------------------------
     # These allow the TUI to "subscribe" to player events.

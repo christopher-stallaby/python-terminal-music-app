@@ -58,6 +58,7 @@ class MusicApp(App):
         Binding("space", "toggle_pause", "Play/Pause"),
         Binding("n", "next_track", "Next"),
         Binding("p", "prev_track", "Prev"),
+        Binding("s", "toggle_shuffle", "Shuffle"),
         Binding("+", "volume_up", "Vol+"),
         Binding("-", "volume_down", "Vol-"),
         Binding("q", "quit", "Quit"),
@@ -149,6 +150,12 @@ class MusicApp(App):
         color: $text-muted;
       }
 
+      #now-playing-shuffle {
+        color: #f8dc5d;
+        margin-top: 0;
+        padding: 0 2;
+      }
+
       /* -- TRACKS PANEL -- */
       #tracks-title {
         background: #113f70;
@@ -208,6 +215,7 @@ class MusicApp(App):
                             yield Label("", id="progress-bar")
                             yield Label("", id="now-playing-time")
                             yield Label(" 🎤 Volume: 80%", id="now-playing-volume")
+                            yield Label("", id="now-playing-shuffle")
 
                 # TRACKS SECTIONS
                 yield Label("TRACKS", id="tracks-title")
@@ -302,6 +310,18 @@ class MusicApp(App):
         if self._art_capable:
             self._art_pane.close()
         self.exit()
+
+    def action_toggle_shuffle(self) -> None:
+        """s - toggle shuffle mode."""
+        self.player.toggle_shuffle()
+
+        shuffle_label = self.query_one("#now-playing-shuffle", Label)
+
+        if self.player.state.shuffle:
+            shuffle_label.update("🔀 Shuffle ON")
+        else:
+            shuffle_label.update("")
+    
 
     # -- POPULATE LISTS --------------------------------------
 
