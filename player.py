@@ -40,6 +40,7 @@ class PlayerState:
     queue_index:    int             = 0
     volume:         int             = 80 # 0-100
     position:       float           = 0.0 # seconds into current track
+    shuffle:        bool            = False
 
 # -- MUSIC PLAYER ------------------------
 class MusicPlayer:
@@ -70,6 +71,7 @@ class MusicPlayer:
         self._on_state_change_callbacks:    list[Callable] = []
 
         self._transitioning = False
+        self._original_queue: list[Track] = []
 
         # Start the background thread that watches for track endings
         self._monitor_thread = threading.Thread(
@@ -86,7 +88,7 @@ class MusicPlayer:
         Load a list of tracks as the playback queue.
         Optionally start at a specific index.
         """
-        # self.stop()
+        # self.stop() IF THIS LINE IS UNCOMMENTED, SELECTING NEW ALBUM WILL STOP PLAYBACK
         self.state.queue        = tracks
         self.state.queue_index  = start_index
 
@@ -144,9 +146,7 @@ class MusicPlayer:
         next_index = self.state.queue_index + 1
 
         if next_index >= len(self.state.queue):
-            # We're are the end of the queue - stop
-            # self.stop()
-            # return
+            # loop back to the first track in the album
             next_index = 0
         
         self.state.queue_index = next_index
@@ -160,17 +160,17 @@ class MusicPlayer:
         if not self.state.queue:
             return
         
-        if self.state.position > 3.0:
-            # Restart the current track
-            self.seek(0)
-            return
-        
         prev_index = self.state.queue_index -1
 
-        if prev_index < 0:
-            # Already at the first track - restart it
+        if (self.state.position > 3.0) or (prev_index < 0):
+            # Restart the current track if more than 3 seconds in or if it is the first track
             self.seek(0)
             return
+
+        # if prev_index < 0: COMMENTING OUT THIS LINE TO TEST COMBINING THIS WITH THE PREVIOUS CONDITION
+        #     # Already at the first track - restart it
+        #     self.seek(0)
+        #     return
     
         self.state.queue_index = prev_index
         self._play_track(self.state.queue[self.state.queue_index])
@@ -197,6 +197,54 @@ class MusicPlayer:
         self._media_player.set_position(position)
         self.state.position = seconds
 
+    def toggle_shuffle(self) -> None:
+        """
+        Toggle shuffle mode on or off.
+        
+        Shuffle ON: 
+            Saves the original queuer order, then randomizes the queue.
+            The currently playing track is moved to index 0 so that
+            next/previous navigation works correcly from the current position.
+        
+        Shuffle OFF:
+            Restores the original queue order.
+            Finds the current track in the restored queue so playback
+            continues from the correct position.
+        """
+        import random
+
+        self.state.shuffle = not self.state.shuffle
+
+        if self.state.shuffle:
+            # Save original order before shuffling
+            self._original_queue = self.state.queue.copy()
+
+            # Build shuffled queue with current track pinned at front
+            current = self.state.current_track
+            rest = [t for t in self.state.queue if t!= current]
+            random.shuffle(rest)
+
+            if current is not None:
+                self.state.queue = [current] + rest
+                self.state.queue_index = 0
+            else:
+                self.state.queue = rest
+        else:
+            # Restore original order
+            self.state.queue = self._original_queue.copy()
+            self._original_queue = []
+
+            # Re-find current track in restored queue
+            if self.state.current_track in self.state.queue:
+                self.state.queue_index = self.state.queue.index(
+                    self.state.current_track
+                )
+            else:
+                self.state.queue_index = 0
+
+        self._notify_state_change()
+
+
     # -- CALLBACK REGISTRATION ------------------------------
     # These allow the TUI to "subscribe" to player events.
     # This pattern is called the Observer Pattern.
@@ -218,7 +266,6 @@ class MusicPlayer:
     def _play_track(self, track: Track) -> None:
         """Internal method - loads and plays a specific track."""
         self._transitioning = True
-        self._media_player.stop()
 
         # Create a new media object pointing to the file
         media = self._instance.media_new(str(track.file_path))
@@ -226,9 +273,6 @@ class MusicPlayer:
         self._media_player.audio_set_volume(self.state.volume)
         self._media_player.play()
 
-        # Pre-buffer briefly before playing to reduce initial hiccup
-        # time.sleep(0.1)
-        # self._media_player.play()
 
         self.state.current_track    = track
         self.state.status           = PlaybackStatus.PLAYING
@@ -297,7 +341,9 @@ class MusicPlayer:
     
 
 # -- ENTRY POINT -------------------------------------
-
+# This block only runs when you execute player.py directly
+# When player.py is imported by other modules, this block is skipped.
+# This pattern is fundamental Python - you'll use it constantly.
 if __name__ == "__main__":
     from library import scan_library
 
